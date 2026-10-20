@@ -17,9 +17,29 @@ def tree(arguments):
     return [f"├─ {line}" for line in lines[:-1]] + [f"└─ {line}" for line in lines[-1:]]
 
 
+# Stands in for an argument without a default until a call gives it a value.
+class Unset:
+    def __repr__(self):
+        return "?"
+
+
+UNSET = Unset()
+
+
 class Parameters(dict):
+    def __init__(self):
+        super().__init__()
+        self.uncalled = {}  # functions not called yet, as name -> function giving their defaults
+
+    # Recompute the entries of functions not called yet: what their **kwargs are passed on to
+    # may have been defined after them.
+    def refresh(self):
+        for name, defaults in self.uncalled.items():
+            self[name] = defaults()
+
     # Text version, used by print() and the terminal.
     def __repr__(self):
+        self.refresh()
         blocks = []
         for name, arguments in self.items():
             blocks.append("\n".join([f"\033[1m{name}\033[0m", *tree(arguments)]))  # \033[1m = bold
@@ -27,6 +47,7 @@ class Parameters(dict):
 
     # Clickable version, used by Jupyter; click a method name to unfold it.
     def _repr_html_(self):
+        self.refresh()
         html = ""
         for name, arguments in self.items():
             lines = escape("\n".join(tree(arguments)))
@@ -64,7 +85,8 @@ def resolve(node, namespace):
     raise LookupError(ast.dump(node))
 
 
-# The parameters that func's **kwargs end up in: the passed value where given, the default otherwise.
+# The parameters that func's **kwargs end up in: the passed value where given, the default otherwise,
+# and UNSET for those without one.
 # local holds func's own arguments so that self.method(**kwargs) resolves. Follows chains of **kwargs.
 def forwarded(func, local, kwargs, seen=()):
     seen = (*seen, func)
@@ -84,8 +106,8 @@ def forwarded(func, local, kwargs, seen=()):
                 continue
             if p.name in rest:
                 result.setdefault(p.name, rest.pop(p.name))
-            elif p.default is not p.empty:
-                result.setdefault(p.name, p.default)
+            else:
+                result.setdefault(p.name, UNSET if p.default is p.empty else p.default)
         inner = inspect.unwrap(getattr(callee, "__func__", callee))
         if parameters and parameters[-1].kind is VAR_KEYWORD and inspect.isfunction(inner) and inner not in seen:
             inner_local = {next(iter(inspect.signature(inner).parameters)): callee.__self__} if inspect.ismethod(callee) else {}
@@ -96,6 +118,19 @@ def forwarded(func, local, kwargs, seen=()):
     return result
 
 
+# What is stored for one call: {name: repr(value)}, without self.
+def describe(function, signature, arguments):
+    result = {}
+    for name, value in arguments.items():
+        # Instead of one dict, list what **kwargs is passed on to, defaults included.
+        if signature.parameters[name].kind is VAR_KEYWORD:
+            for key, val in forwarded(inspect.unwrap(function), arguments, value).items():
+                result.setdefault(key, val)
+        elif name != "self":
+            result[name] = value
+    return {k: repr(v) for k, v in result.items()}
+
+
 def track(function, parameters):
     signature = inspect.signature(function)
 
@@ -103,15 +138,8 @@ def track(function, parameters):
     def wrapper(*args, **kwargs):
         bound = signature.bind(*args, **kwargs)
         bound.apply_defaults()
-        arguments = {}
-        for name, value in bound.arguments.items():
-            # Instead of one dict, list what **kwargs is passed on to, defaults included.
-            if signature.parameters[name].kind is VAR_KEYWORD:
-                for key, val in forwarded(inspect.unwrap(function), bound.arguments, value).items():
-                    arguments.setdefault(key, val)
-            elif name != "self":
-                arguments[name] = value
-        parameters[function.__name__] = {k: repr(v) for k, v in arguments.items()}
+        parameters.uncalled.pop(function.__name__, None)
+        parameters[function.__name__] = describe(function, signature, bound.arguments)
         return function(*args, **kwargs)
     return wrapper
 
@@ -156,8 +184,9 @@ def track_function(function):
     """Track the arguments of a function.
 
     Each call stores the arguments, defaults included, in ``function.parameters``,
-    replacing those of the previous call. Keywords passed on with ``**kwargs`` are
-    listed as in :func:`track_class`.
+    replacing those of the previous call. Before the first call, ``function.parameters``
+    shows the defaults, with ``?`` for arguments that have none. Keywords passed on with
+    ``**kwargs`` are listed as in :func:`track_class`.
 
     Parameters
     ----------
@@ -174,6 +203,8 @@ def track_function(function):
     >>> @track_function
     ... def observe(target, exposure=30):
     ...     ...
+    >>> observe.parameters["observe"]
+    {'target': '?', 'exposure': '30'}
     >>> observe("Vega")
     >>> observe.parameters["observe"]
     {'target': "'Vega'", 'exposure': '30'}
@@ -181,4 +212,11 @@ def track_function(function):
     parameters = Parameters()
     wrapper = track(function, parameters)
     wrapper.parameters = parameters
+    # Before the first call: the defaults, and UNSET for arguments without one.
+    signature = inspect.signature(function)
+    bound = signature.bind_partial()
+    bound.apply_defaults()
+    arguments = {name: bound.arguments.get(name, UNSET) for name in signature.parameters}
+    parameters.uncalled[function.__name__] = lambda: describe(function, signature, arguments)
+    parameters.refresh()
     return wrapper

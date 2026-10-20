@@ -68,7 +68,8 @@ Functions
 ---------
 
 :func:`~paramtrack.track_function` does the same for plain functions and stores the
-arguments as ``function.parameters``:
+arguments as ``function.parameters``. Before the first call, it shows the defaults, with
+``?`` for arguments that have none:
 
 .. code-block:: python
 
@@ -77,6 +78,19 @@ arguments as ``function.parameters``:
    @track_function
    def observe(target, exposure=30, filter="V"):
        ...
+
+   print(observe.parameters)
+
+.. code-block:: text
+
+   observe
+   ├─ target   = ?
+   ├─ exposure = 30
+   └─ filter   = 'V'
+
+Each call replaces this with the values of that call:
+
+.. code-block:: python
 
    observe("Vega")
 
@@ -94,6 +108,9 @@ Good to know
 
 - ``parameters`` belongs to the class, so all instances of a class share it.
 - Values are stored as their ``repr``, e.g. ``"'Vega'"`` for the string ``Vega``.
+- ``?`` marks an argument without a value: a function argument without a default before
+  the first call, or a required parameter of the function receiving ``**kwargs`` that
+  wasn't passed.
 - To find where ``**kwargs`` go, ``paramtrack`` reads the source code of the method
   without running it. If the method changes the keywords before passing them on, the
   defaults shown are still those of the receiving function. Without source code, as in a

@@ -96,9 +96,40 @@ def test_track_function():
     def expose(target, exposure=30):
         return target
 
-    assert expose.parameters == {}
     assert expose("Vega") == "Vega"
     assert expose.parameters == {"expose": {"target": "'Vega'", "exposure": "30"}}
+
+
+def test_track_function_shows_defaults_before_first_call():
+    @track_function
+    def expose(target, *frames, exposure=30, **options):
+        return target
+
+    assert expose.parameters == {"expose": {"target": "?", "frames": "()", "exposure": "30"}}
+    assert "├─ target   = ?" in repr(expose.parameters)
+
+    expose("Vega")
+    assert expose.parameters["expose"]["target"] == "'Vega'"
+
+
+def test_kwargs_before_first_call():
+    @track_function
+    def run(**kwargs):
+        return observe(**kwargs)
+
+    assert run.parameters["run"] == {"target": "?", "exposure": "30", "filter": "'V'"}
+
+
+def test_kwargs_before_first_call_to_function_defined_later():
+    @track_function
+    def run(**kwargs):
+        return later(**kwargs)
+
+    def later(speed=1):
+        return speed
+
+    assert "└─ speed = 1" in repr(run.parameters)
+    assert run.parameters["run"] == {"speed": "1"}
 
 
 def test_kwargs_followed_through_a_chain():

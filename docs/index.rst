@@ -24,6 +24,11 @@ User Guide:
 Changelog:
 ++++++++++
 
+**Unreleased**
+
+- ``track_function`` shows the defaults before the first call, with ``?`` for arguments that have none
+- Required parameters of the function receiving ``**kwargs`` are shown as ``?`` when not passed
+
 **0.2.0 (2026-10-20)**
 
 - Keywords passed on with ``**kwargs`` are listed with the parameters and defaults of the function receiving them

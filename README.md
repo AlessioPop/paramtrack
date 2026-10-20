@@ -66,7 +66,7 @@ This works through chains of `**kwargs` and for calls like `self.method(**kwargs
 
 ### Functions
 
-`track_function` does the same for plain functions and stores the arguments as `function.parameters`:
+`track_function` does the same for plain functions and stores the arguments as `function.parameters`. Before the first call, it shows the defaults, with `?` for arguments that have none:
 
 ```python
 from paramtrack import track_function
@@ -75,10 +75,17 @@ from paramtrack import track_function
 def observe(target, exposure=30, filter="V"):
     ...
 
-observe("Vega")
-
 print(observe.parameters)
 ```
+
+```
+observe
+├─ target   = ?
+├─ exposure = 30
+└─ filter   = 'V'
+```
+
+After a call such as `observe("Vega")`, the values of that call are shown instead.
 
 ## Development
 
