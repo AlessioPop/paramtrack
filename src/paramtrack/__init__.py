@@ -116,8 +116,35 @@ def track(function, parameters):
     return wrapper
 
 
-# Class decorator: track every method and store the arguments as cls.parameters.
 def track_class(cls):
+    """Track the arguments of every method of a class.
+
+    Each call stores the method's arguments, defaults included, in ``cls.parameters``
+    under the method's name, replacing those of the previous call. Keywords that a
+    method passes on with ``**kwargs`` are listed together with the parameters and
+    defaults of the function receiving them.
+
+    Parameters
+    ----------
+    cls : type
+        The class to track.
+
+    Returns
+    -------
+    type
+        The same class, with its methods wrapped and a ``parameters`` attribute added.
+
+    Examples
+    --------
+    >>> @track_class
+    ... class Telescope:
+    ...     def observe(self, target, exposure=30):
+    ...         ...
+    >>> telescope = Telescope()
+    >>> telescope.observe("Vega")
+    >>> telescope.parameters["observe"]
+    {'target': "'Vega'", 'exposure': '30'}
+    """
     cls.parameters = Parameters()
     for name, method in list(vars(cls).items()):
         if inspect.isfunction(method):
@@ -125,8 +152,32 @@ def track_class(cls):
     return cls
 
 
-# Function decorator: track the function and store its arguments as function.parameters.
 def track_function(function):
+    """Track the arguments of a function.
+
+    Each call stores the arguments, defaults included, in ``function.parameters``,
+    replacing those of the previous call. Keywords passed on with ``**kwargs`` are
+    listed as in :func:`track_class`.
+
+    Parameters
+    ----------
+    function : callable
+        The function to track.
+
+    Returns
+    -------
+    callable
+        A wrapper around the function with a ``parameters`` attribute.
+
+    Examples
+    --------
+    >>> @track_function
+    ... def observe(target, exposure=30):
+    ...     ...
+    >>> observe("Vega")
+    >>> observe.parameters["observe"]
+    {'target': "'Vega'", 'exposure': '30'}
+    """
     parameters = Parameters()
     wrapper = track(function, parameters)
     wrapper.parameters = parameters

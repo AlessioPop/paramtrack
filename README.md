@@ -1,5 +1,9 @@
 # paramtrack
 
+[![PyPI](https://img.shields.io/pypi/v/paramtrack)](https://pypi.org/project/paramtrack/)
+[![Tests](https://github.com/AlessioPop/paramtrack/actions/workflows/tests.yml/badge.svg)](https://github.com/AlessioPop/paramtrack/actions/workflows/tests.yml)
+[![Documentation](https://readthedocs.org/projects/paramtrack/badge/?version=latest)](https://paramtrack.readthedocs.io/en/latest/)
+
 Remembers the arguments of each method's last call, defaults included.
 
 ## Install
@@ -74,4 +78,18 @@ def observe(target, exposure=30, filter="V"):
 observe("Vega")
 
 print(observe.parameters)
+```
+
+## Development
+
+Run the tests:
+
+```bash
+uv run pytest
+```
+
+Build the docs into `docs/_build/html`:
+
+```bash
+uv run --with-requirements docs/requirements.txt sphinx-build docs docs/_build/html
 ```
