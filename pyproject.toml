@@ -1,6 +1,6 @@
 [project]
 name = "paramtrack"
-version = "0.1.0"
+version = "0.1.1"
 description = "Remembers the arguments of each method's last call, defaults included."
 readme = "README.md"
 license = "MIT"

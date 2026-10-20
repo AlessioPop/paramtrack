@@ -34,7 +34,14 @@ def track(method, parameters):
     def wrapper(*args, **kwargs):
         bound = inspect.signature(method).bind(*args, **kwargs)
         bound.apply_defaults()
-        parameters[method.__name__] = {k: repr(v) for k, v in bound.arguments.items() if k != "self"}
+        arguments = {}
+        for name, value in bound.arguments.items():
+            # Unpack **kwargs so each keyword gets its own line instead of one dict.
+            if bound.signature.parameters[name].kind is inspect.Parameter.VAR_KEYWORD:
+                arguments.update(value)
+            elif name != "self":
+                arguments[name] = value
+        parameters[method.__name__] = {k: repr(v) for k, v in arguments.items()}
         return method(*args, **kwargs)
     return wrapper
 
