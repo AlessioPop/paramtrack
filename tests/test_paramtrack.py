@@ -9,7 +9,6 @@ def observe(target, exposure=30, filter="V"):
     return target
 
 
-# A fresh class per test: parameters belongs to the class, so instances share it.
 @pytest.fixture
 def telescope():
     @track_class
@@ -38,6 +37,12 @@ def telescope():
 
         def store(self, **kwargs):
             self.kwargs = kwargs
+
+        def fail(self, reason="bad prior"):
+            raise ValueError(reason)
+
+        def status_inside(self, x=1):
+            return self.parameters["status_inside"].status
 
     return Telescope()
 
@@ -154,7 +159,8 @@ def test_recursion_through_kwargs_terminates():
             return countdown(n - 1, **kwargs)
 
     countdown(step=1)
-    assert countdown.parameters["countdown"] == {"n": "0", "step": "1"}
+    # The call made from outside is kept, not the innermost one.
+    assert countdown.parameters["countdown"] == {"n": "3", "step": "1"}
 
 
 def test_without_source_lists_kwargs_as_given():
@@ -174,3 +180,122 @@ def test_text_and_html_views(telescope):
 
     html = telescope.parameters._repr_html_()
     assert "<details><summary><b>observe</b></summary>" in html
+
+
+def test_each_instance_has_its_own_parameters(telescope):
+    other = type(telescope)("Webb")
+    telescope.observe("Vega")
+    other.observe("Sirius", exposure=10)
+
+    assert telescope.parameters["observe"]["target"] == "'Vega'"
+    assert other.parameters["observe"] == {"target": "'Sirius'", "exposure": "10", "filter": "'V'"}
+    assert other.parameters["__init__"] == {"name": "'Webb'"}
+
+
+def test_sources_of_values(telescope):
+    telescope.observe("Vega", exposure=60)
+    assert telescope.parameters["observe"].sources == {"target": "passed", "exposure": "passed", "filter": "default"}
+
+    telescope.run(exposure=60)
+    call = telescope.parameters["run"]
+    assert call.sources == {"exposure": "passed", "filter": "inferred"}
+    assert call.inferred_from == {"filter": "observe"}
+
+
+def test_inferred_values_are_marked(telescope):
+    telescope.run(exposure=60)
+    lines = repr(telescope.parameters).splitlines()
+    assert "├─ exposure = 60" in lines
+    assert any(line.startswith("└─ filter   = 'V'") and "# inferred from observe" in line for line in lines)
+    assert "# inferred from observe" in telescope.parameters._repr_html_()
+
+
+def test_missing_values_through_kwargs():
+    @track_function
+    def run(**kwargs):
+        return observe(**kwargs)
+
+    call = run.parameters["run"]
+    assert call.status == "not called"
+    assert call.sources["target"] == "missing"
+    assert call.inferred_from["target"] == "observe"
+
+
+def test_failed_call_is_recorded(telescope):
+    with pytest.raises(ValueError, match="bad prior"):
+        telescope.fail()
+
+    call = telescope.parameters["fail"]
+    assert call == {"reason": "'bad prior'"}
+    assert call.status == "failed"
+    assert call.error == "ValueError: bad prior"
+    assert "(failed: ValueError: bad prior)" in repr(telescope.parameters)
+
+
+def test_status_while_running_and_after(telescope):
+    assert telescope.status_inside() == "running"
+    assert telescope.parameters["status_inside"].status == "ok"
+    assert telescope.parameters["status_inside"].error is None
+
+
+def test_wrong_arguments_raise_the_functions_own_error(telescope):
+    with pytest.raises(TypeError, match="observe"):
+        telescope.observe()
+    assert "observe" not in telescope.parameters
+
+
+def test_unrepresentable_values_dont_break_the_call(telescope):
+    class Broken:
+        def __repr__(self):
+            raise RuntimeError
+
+    assert isinstance(telescope.observe(Broken()), Broken)
+    assert telescope.parameters["observe"]["target"] == "<Broken object>"
+
+
+def test_export(telescope, tmp_path):
+    telescope.run(exposure=60)
+    with pytest.raises(ValueError):
+        telescope.fail("no data")
+
+    data = telescope.parameters.to_dict()
+    assert data["run"] == {
+        "status": "ok",
+        "error": None,
+        "arguments": {
+            "exposure": {"value": "60", "source": "passed"},
+            "filter": {"value": "'V'", "source": "inferred", "inferred_from": "observe"},
+        },
+    }
+    assert data["fail"]["status"] == "failed"
+    assert data["fail"]["error"] == "ValueError: no data"
+
+    path = tmp_path / "parameters.json"
+    assert telescope.parameters.to_json(path) is None
+    assert json.loads(path.read_text()) == data
+    assert json.loads(telescope.parameters.to_json()) == data
+
+
+def test_export_before_first_call():
+    @track_function
+    def expose(target, exposure=30):
+        return target
+
+    assert expose.parameters.to_dict() == {
+        "expose": {
+            "status": "not called",
+            "error": None,
+            "arguments": {
+                "target": {"value": None, "source": "missing"},
+                "exposure": {"value": "30", "source": "default"},
+            },
+        }
+    }
+
+
+def test_slots_without_dict_are_rejected():
+    class Slotted:
+        __slots__ = ("x",)
+
+    with pytest.raises(TypeError, match="__dict__"):
+        track_class(Slotted)
