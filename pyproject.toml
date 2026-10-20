@@ -1,0 +1,19 @@
+[project]
+name = "paramtrack"
+version = "0.1.0"
+description = "Remembers the arguments of each method's last call, defaults included."
+readme = "README.md"
+license = "MIT"
+license-files = ["LICENSE"]
+authors = [
+    { name = "Alessio Popovic", email = "alessiopopovic@gmail.com" }
+]
+requires-python = ">=3.9"
+dependencies = []
+
+[project.urls]
+Repository = "https://github.com/AlessioPop/paramtrack"
+
+[build-system]
+requires = ["uv_build>=0.11.28,<0.12.0"]
+build-backend = "uv_build"
